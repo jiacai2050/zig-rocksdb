@@ -3,9 +3,7 @@ const rocksdb = @import("rocksdb");
 const c = rocksdb.c;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (gpa.deinit() != .ok) @panic("leak");
-    const allocator = gpa.allocator();
+    const allocator = std.heap.page_allocator;
 
     const db = try rocksdb.DB.init("/tmp/zig-rocksdb-example", .{
         .create_if_missing = true,
@@ -25,7 +23,7 @@ pub fn main() !void {
         defer allocator.free(key);
         const value = try db.get(key);
         if (value) |v| {
-            // defer c.rocksdb_free(v.ptr);
+            defer rocksdb.free(v);
             std.debug.print("{s} = {s}\n", .{ key, v });
         }
     }

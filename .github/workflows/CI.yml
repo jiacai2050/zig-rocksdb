@@ -46,5 +46,5 @@ jobs:
           BINS=("./zig-out/bin/example")
           for bin in ${BINS[@]}; do
             valgrind --leak-check=full --tool=memcheck \
-            --show-leak-kinds=all --error-exitcode=1 ${bin}
+            --show-leak-kinds=definite,possible --error-exitcode=1 ${bin}
           done

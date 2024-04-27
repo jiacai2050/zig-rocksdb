@@ -1,12 +1,54 @@
 #+TITLE: Zig-rocksdb
 #+DATE: 2024-04-27T11:27:04+0800
-#+LASTMOD: 2024-04-27T13:06:29+0800
+#+LASTMOD: 2024-04-27T15:08:21+0800
 #+AUTHOR: Jiacai Liu
 
 [[https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml][https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml/badge.svg]]
 
 [[https://github.com/facebook/rocksdb/][RocksDB]] binding for Zig.
 
+* Usage
+#+begin_src bash
+zig fetch --save=rocksdb https://github.com/jiacai2050/zig-rocksdb/archive/${COMMIT}.tar.gz
+#+end_src
+
+#+begin_src bash :results code :exports results :wrap src zig
+cat example.zig
+#+end_src
+
+#+RESULTS:
+#+begin_src zig
+const std = @import("std");
+const rocksdb = @import("rocksdb");
+const c = rocksdb.c;
+
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
+    const db = try rocksdb.DB.init("/tmp/zig-rocksdb-example", .{
+        .create_if_missing = true,
+    });
+    defer db.deinit();
+
+    for (0..10) |i| {
+        const key = try std.fmt.allocPrint(allocator, "key-{d}", .{i});
+        defer allocator.free(key);
+        const value = try std.fmt.allocPrint(allocator, "{d}", .{i * i});
+        defer allocator.free(value);
+        try db.put(key, value);
+    }
+
+    for (0..10) |i| {
+        const key = try std.fmt.allocPrint(allocator, "key-{d}", .{i});
+        defer allocator.free(key);
+        const value = try db.get(key);
+        if (value) |v| {
+            defer rocksdb.free(v);
+            std.debug.print("{s} = {s}\n", .{ key, v });
+        }
+    }
+}
+#+end_src
 
 * Other bindings
 https://github.com/facebook/rocksdb/blob/main/LANGUAGE-BINDINGS.md

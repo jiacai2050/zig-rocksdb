@@ -8,22 +8,28 @@ pub const Options = struct {
     create_if_missing: bool,
 
     fn toC(self: Options) *c.rocksdb_options_t {
-        const opt = c.rocksdb_options_create();
+        const opts = c.rocksdb_options_create();
+        errdefer c.rocksdb_options_destroy(opts);
 
-        c.rocksdb_options_set_create_if_missing(opt, @intFromBool(self.create_if_missing));
-        return opt.?;
+        c.rocksdb_options_set_create_if_missing(opts, @intFromBool(self.create_if_missing));
+        return opts.?;
     }
 };
+
+pub fn free(v: []const u8) void {
+    c.rocksdb_free(@constCast(@ptrCast(v.ptr)));
+}
 
 pub const DB = struct {
     core: *c.rocksdb_t,
 
     pub fn init(path: [:0]const u8, options: Options) !DB {
-        const c_options = options.toC();
+        const c_opts = options.toC();
+        defer c.rocksdb_options_destroy(c_opts);
 
         var err: ?[*:0]u8 = null;
         const c_db = c.rocksdb_open(
-            c_options,
+            c_opts,
             path.ptr,
             &err,
         );
@@ -43,7 +49,9 @@ pub const DB = struct {
 
     pub fn put(self: DB, key: []const u8, value: []const u8) !void {
         var err: ?[*:0]u8 = null;
-        c.rocksdb_put(self.core, c.rocksdb_writeoptions_create(), key.ptr, key.len, value.ptr, value.len, &err);
+        const opts = c.rocksdb_writeoptions_create();
+        defer c.rocksdb_writeoptions_destroy(opts);
+        c.rocksdb_put(self.core, opts, key.ptr, key.len, value.ptr, value.len, &err);
         if (err) |e| {
             std.log.err("Error reading database: {s}", .{e});
             c.rocksdb_free(e);
@@ -56,10 +64,11 @@ pub const DB = struct {
     pub fn get(self: DB, key: []const u8) !?[]const u8 {
         var value_len: usize = 0;
         var err: ?[*:0]u8 = null;
-        const read_opts = c.rocksdb_readoptions_create();
+        const opts = c.rocksdb_readoptions_create();
+        defer c.rocksdb_readoptions_destroy(opts);
         const value = c.rocksdb_get(
             self.core,
-            read_opts,
+            opts,
             key.ptr,
             key.len,
             &value_len,

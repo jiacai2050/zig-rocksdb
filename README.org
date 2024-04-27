@@ -1,0 +1,15 @@
+#+TITLE: Zig-rocksdb
+#+DATE: 2024-04-27T11:27:04+0800
+#+LASTMOD: 2024-04-27T13:06:29+0800
+#+AUTHOR: Jiacai Liu
+
+[[https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml][https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml/badge.svg]]
+
+[[https://github.com/facebook/rocksdb/][RocksDB]] binding for Zig.
+
+
+* Other bindings
+https://github.com/facebook/rocksdb/blob/main/LANGUAGE-BINDINGS.md
+
+* License
+[[file:LICENSE][MIT]]

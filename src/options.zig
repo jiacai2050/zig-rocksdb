@@ -13,12 +13,15 @@ pub const Options = struct {
     /// If true, the database will be created if it is missing.
     /// Default: false
     create_if_missing: ?bool = null,
+
     /// If true, missing column families will be automatically created on `DB::Open()`
     /// Default: false
     create_missing_column_families: ?bool = null,
+
     /// If true, an error is raised if the database already exists.
     /// Default: false
     error_if_exists: ?bool = null,
+
     /// If true, RocksDB will aggressively check consistency of the data.
     /// Also, if any of the  writes to the database fails (Put, Delete, Merge,
     /// Write), the database will switch to read-only mode and fail all other
@@ -26,10 +29,13 @@ pub const Options = struct {
     /// In most cases you want this to be set to true.
     /// Default: true
     paranoid_checks: ?bool = null,
+
     /// Default: -1
     max_open_files: ?i32 = null,
+
     /// Default: 16
     max_file_opening_threads: ?i32 = null,
+
     /// Once write-ahead logs exceed this size, we will start forcing the flush of
     /// column families whose memtables are backed by the oldest live WAL file
     /// (i.e. the ones that are causing all the space amplification). If set to 0
@@ -45,6 +51,7 @@ pub const Options = struct {
     ///
     /// Dynamically changeable through SetDBOptions() API.
     max_total_wal_size: ?u64 = null,
+
     /// Maximum number of concurrent background jobs (compactions and flushes).
     ///
     /// Default: 2

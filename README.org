@@ -1,6 +1,6 @@
 #+TITLE: Zig-rocksdb
 #+DATE: 2024-04-27T11:27:04+0800
-#+LASTMOD: 2024-04-27T15:08:21+0800
+#+LASTMOD: 2024-04-28T19:20:07+0800
 #+AUTHOR: Jiacai Liu
 
 [[https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml][https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml/badge.svg]]
@@ -27,6 +27,7 @@ pub fn main() !void {
 
     const db = try rocksdb.DB.init("/tmp/zig-rocksdb-example", .{
         .create_if_missing = true,
+        .max_file_opening_threads = 2,
     });
     defer db.deinit();
 
@@ -35,13 +36,13 @@ pub fn main() !void {
         defer allocator.free(key);
         const value = try std.fmt.allocPrint(allocator, "{d}", .{i * i});
         defer allocator.free(value);
-        try db.put(key, value);
+        try db.put(key, value, .{});
     }
 
     for (0..10) |i| {
         const key = try std.fmt.allocPrint(allocator, "key-{d}", .{i});
         defer allocator.free(key);
-        const value = try db.get(key);
+        const value = try db.get(key, .{});
         if (value) |v| {
             defer rocksdb.free(v);
             std.debug.print("{s} = {s}\n", .{ key, v });

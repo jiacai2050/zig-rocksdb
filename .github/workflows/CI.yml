@@ -22,8 +22,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        zig-version: [0.12.0]
+        os: [ubuntu-latest]
+        # os: [ubuntu-latest, macos-latest]
+        zig-version: [0.12.0, master]
     steps:
       - uses: actions/checkout@v4
       - uses: goto-bus-stop/setup-zig@v2

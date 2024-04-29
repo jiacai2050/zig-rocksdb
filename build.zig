@@ -14,7 +14,6 @@ pub fn build(b: *std.Build) void {
 
     module.linkSystemLibrary("rocksdb", .{});
 
-    buildExample(b, target, optimize, module);
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -22,13 +21,23 @@ pub fn build(b: *std.Build) void {
     });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
+    const run_step = b.step("run", "Run all examples");
     test_step.dependOn(&run_lib_unit_tests.step);
+    buildExample(b, "basic", run_step, target, optimize, module);
+    buildExample(b, "cf", run_step, target, optimize, module);
 }
 
-fn buildExample(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, module: *std.Build.Module) void {
+fn buildExample(
+    b: *std.Build,
+    comptime name: []const u8,
+    run_all: *std.Build.Step,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    module: *std.Build.Module,
+) void {
     const exe = b.addExecutable(.{
-        .name = "example",
-        .root_source_file = b.path("example.zig"),
+        .name = name,
+        .root_source_file = b.path(std.fmt.comptimePrint("examples/{s}.zig", .{name})),
         .target = target,
         .optimize = optimize,
     });
@@ -40,6 +49,7 @@ fn buildExample(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
-    const run_step = b.step("run", "Run the app");
+    const run_step = b.step("run-" ++ name, "Run the app");
     run_step.dependOn(&run_cmd.step);
+    run_all.dependOn(&run_cmd.step);
 }

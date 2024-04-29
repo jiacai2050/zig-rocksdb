@@ -3,14 +3,9 @@ const rocksdb = @import("rocksdb");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-
-    const db = try rocksdb.DB.openColumnFamilies(
-        allocator,
-        "/tmp/zig-rocksdb-example",
-        .{
-            .create_if_missing = true,
-        },
-    );
+    const db = try rocksdb.DB.open("/tmp/zig-rocksdb-basic", .{
+        .create_if_missing = true,
+    });
     defer db.deinit();
 
     for (0..10) |i| {
@@ -30,7 +25,4 @@ pub fn main() !void {
             std.debug.print("{s} = {s}\n", .{ key, v });
         }
     }
-
-    const cf = try db.createColumnFamily("metadata", .{});
-    std.debug.print("{any}\n", .{cf});
 }

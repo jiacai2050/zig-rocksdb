@@ -1,6 +1,6 @@
 #+TITLE: Zig-rocksdb
 #+DATE: 2024-04-27T11:27:04+0800
-#+LASTMOD: 2024-04-28T19:20:07+0800
+#+LASTMOD: 2024-04-29T09:12:53+0800
 #+AUTHOR: Jiacai Liu
 
 [[https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml][https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml/badge.svg]]
@@ -13,21 +13,18 @@ zig fetch --save=rocksdb https://github.com/jiacai2050/zig-rocksdb/archive/${COM
 #+end_src
 
 #+begin_src bash :results code :exports results :wrap src zig
-cat example.zig
+cat examples/basic.zig
 #+end_src
 
 #+RESULTS:
 #+begin_src zig
 const std = @import("std");
 const rocksdb = @import("rocksdb");
-const c = rocksdb.c;
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-
-    const db = try rocksdb.DB.init("/tmp/zig-rocksdb-example", .{
+    const db = try rocksdb.DB.open("/tmp/zig-rocksdb-basic", .{
         .create_if_missing = true,
-        .max_file_opening_threads = 2,
     });
     defer db.deinit();
 

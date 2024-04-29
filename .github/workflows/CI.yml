@@ -42,10 +42,4 @@ jobs:
       - name: Memory leak detect
         if: matrix.os == 'ubuntu-latest'
         run: |
-          zig build -Dcpu=baseline --verbose
-
-          BINS=("./zig-out/bin/example")
-          for bin in ${BINS[@]}; do
-            valgrind --leak-check=full --tool=memcheck \
-            --show-leak-kinds=definite,possible --error-exitcode=1 ${bin}
-          done
+          make valgrind

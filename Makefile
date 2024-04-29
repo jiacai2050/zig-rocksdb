@@ -10,6 +10,10 @@ run:
 test:
 	zig build test -freference-trace
 
+valgrind:
+	zig build
+	./scripts/valgrind.sh
+
 install-deps:
 ifeq ($(uname_S), Darwin)
 	brew install rocksdb

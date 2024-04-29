@@ -30,27 +30,29 @@ pub const DB = struct {
     pub fn openColumnFamilies(allocator: Allocator, path: [:0]const u8, opts: Options) !DB {
         const c_opts = opts.toC();
         defer c.rocksdb_options_destroy(c_opts);
-        const cf_list = DB.listColumnFamily(path, opts) catch {
+        const cf_names = DB.listColumnFamilyC(path, c_opts) catch {
             return DB.openC(path, c_opts);
         };
-        var cf_opts_list = std.ArrayList(*c.rocksdb_options_t).init(allocator);
-        defer cf_opts_list.deinit();
-        for (0..cf_list.len) |_| {
-            try cf_opts_list.append(c_opts);
+
+        var cf_opts = std.ArrayList(*c.rocksdb_options_t).init(allocator);
+        defer cf_opts.deinit();
+        for (0..cf_names.len) |_| {
+            try cf_opts.append(c_opts);
         }
-        var cf_handle_list = std.ArrayList(?*c.rocksdb_column_family_handle_t).init(allocator);
-        for (0..cf_list.len) |_| {
-            try cf_handle_list.append(null);
+
+        var cf_handles = std.ArrayList(?*c.rocksdb_column_family_handle_t).init(allocator);
+        for (0..cf_names.len) |_| {
+            try cf_handles.append(null);
         }
 
         var err: ?[*:0]u8 = null;
         const core = c.rocksdb_open_column_families(
             c_opts,
             path,
-            @intCast(cf_list.len),
-            cf_list.ptr,
-            cf_opts_list.items.ptr,
-            cf_handle_list.items.ptr,
+            @intCast(cf_names.len),
+            cf_names.ptr,
+            cf_opts.items.ptr,
+            cf_handles.items.ptr,
             &err,
         );
         if (err) |e| {
@@ -61,8 +63,8 @@ pub const DB = struct {
 
         return DB{
             .core = core.?,
-            .cf_handles = cf_handle_list,
-            .cf_names = cf_list,
+            .cf_handles = cf_handles,
+            .cf_names = cf_names,
         };
     }
 
@@ -84,13 +86,16 @@ pub const DB = struct {
     }
 
     pub fn deinit(self: DB) void {
-        c.rocksdb_close(self.core);
         if (self.cf_handles) |hs| {
+            for (hs.items) |h| {
+                c.rocksdb_column_family_handle_destroy(h);
+            }
             hs.deinit();
         }
         if (self.cf_names) |ns| {
             c.rocksdb_list_column_families_destroy(ns.ptr, ns.len);
         }
+        c.rocksdb_close(self.core);
     }
 
     pub fn put(self: DB, key: []const u8, value: []const u8, opts: WriteOptions) !void {
@@ -140,10 +145,7 @@ pub const DB = struct {
             null;
     }
 
-    pub fn listColumnFamily(path: [:0]const u8, opts: Options) ![][*c]u8 {
-        const c_opts = opts.toC();
-        // defer c.rocksdb_options_destroy(c_opts);
-
+    pub fn listColumnFamilyC(path: [:0]const u8, c_opts: *c.rocksdb_options_t) ![][*c]u8 {
         var err: ?[*:0]u8 = null;
         var len: usize = 0;
         const cf_list = c.rocksdb_list_column_families(c_opts, path.ptr, &len, &err);
@@ -172,6 +174,7 @@ pub const DB = struct {
             name.ptr,
             &err,
         );
+        errdefer c.rocksdb_column_family_handle_destroy(c_cf);
 
         if (err) |e| {
             std.log.err("Error creating column family: {s}", .{e});

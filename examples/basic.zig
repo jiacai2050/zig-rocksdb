@@ -3,9 +3,13 @@ const rocksdb = @import("rocksdb");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    const db = try rocksdb.DB.open("/tmp/zig-rocksdb-basic", .{
-        .create_if_missing = true,
-    });
+    var db = try rocksdb.DB.open(
+        allocator,
+        "/tmp/zig-rocksdb-basic",
+        .{
+            .create_if_missing = true,
+        },
+    );
     defer db.deinit();
 
     for (0..10) |i| {

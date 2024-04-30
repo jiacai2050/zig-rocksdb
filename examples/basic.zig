@@ -3,7 +3,7 @@ const rocksdb = @import("rocksdb");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    var db = try rocksdb.DB.open(
+    var db = try rocksdb.Database(.Single).open(
         allocator,
         "/tmp/zig-rocksdb-basic",
         .{

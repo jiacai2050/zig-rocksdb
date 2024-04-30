@@ -16,245 +16,279 @@ pub fn free(v: []const u8) void {
     c.rocksdb_free(@constCast(@ptrCast(v.ptr)));
 }
 
-pub const DB = struct {
-    c_handle: *c.rocksdb_t,
-    allocator: Allocator,
-    cfs: std.StringArrayHashMap(ColumnFamily),
-
-    pub fn open(allocator: Allocator, path: [:0]const u8, opts: Options) !DB {
-        const c_opts = opts.toC();
-        defer c.rocksdb_options_destroy(c_opts);
-
-        return DB.openC(allocator, path, c_opts);
-    }
-
-    pub fn openColumnFamilies(allocator: Allocator, path: [:0]const u8, opts: Options) !DB {
-        const c_opts = opts.toC();
-        defer c.rocksdb_options_destroy(c_opts);
-        const cf_names = try DB.listColumnFamilyC(path, c_opts) orelse return DB.openC(allocator, path, c_opts);
-        defer c.rocksdb_list_column_families_destroy(cf_names.ptr, cf_names.len);
-
-        var cf_opts = std.ArrayList(*c.rocksdb_options_t).init(allocator);
-        defer cf_opts.deinit();
-        for (0..cf_names.len) |_| {
-            try cf_opts.append(c_opts);
-        }
-
-        var cf_handles = std.ArrayList(?*c.rocksdb_column_family_handle_t).init(allocator);
-        for (0..cf_names.len) |_| {
-            try cf_handles.append(null);
-        }
-
-        var err: ?[*:0]u8 = null;
-        const c_handle = c.rocksdb_open_column_families(
-            c_opts,
-            path,
-            @intCast(cf_names.len),
-            cf_names.ptr,
-            cf_opts.items.ptr,
-            cf_handles.items.ptr,
-            &err,
-        );
-        if (err) |e| {
-            std.log.err("Error open column families: {s}", .{e});
-            c.rocksdb_free(err);
-            return error.OpenDatabase;
-        }
-
-        var cfs = std.StringArrayHashMap(ColumnFamily).init(allocator);
-        for (cf_names, cf_handles.items) |name, handle| {
-            if (handle) |h| {
-                const n = try allocator.dupe(u8, std.mem.span(name));
-                try cfs.put(n, ColumnFamily.init(h));
-            } else {
-                return error.ColumnFamilyNull;
-            }
-        }
-
-        return DB{
-            .allocator = allocator,
-            .c_handle = c_handle.?,
-            .cfs = cfs,
-        };
-    }
-
-    pub fn openC(allocator: Allocator, path: [:0]const u8, c_opts: *c.rocksdb_options_t) !DB {
-        var err: ?[*:0]u8 = null;
-        const c_db = c.rocksdb_open(
-            c_opts,
-            path.ptr,
-            &err,
-        );
-
-        if (err) |e| {
-            std.log.err("Error opening database: {s}", .{e});
-            c.rocksdb_free(err);
-            return error.OpenDatabase;
-        }
-
-        return DB{
-            .c_handle = c_db.?,
-            .allocator = allocator,
-            .cfs = std.StringArrayHashMap(ColumnFamily).init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *DB) void {
-        var it = self.cfs.iterator();
-        while (it.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            entry.value_ptr.*.deinit();
-        }
-        self.cfs.deinit();
-
-        c.rocksdb_close(self.c_handle);
-    }
-
-    pub fn put(self: DB, key: []const u8, value: []const u8, opts: WriteOptions) !void {
-        var err: ?[*:0]u8 = null;
-        const c_opts = opts.toC();
-        defer c.rocksdb_writeoptions_destroy(c_opts);
-        c.rocksdb_put(
-            self.c_handle,
-            c_opts,
-            key.ptr,
-            key.len,
-            value.ptr,
-            value.len,
-            &err,
-        );
-        if (err) |e| {
-            std.log.err("Error reading database: {s}", .{e});
-            c.rocksdb_free(e);
-            return;
-        }
-
-        return;
-    }
-
-    pub fn putCf(self: DB, cf_name: []const u8, key: []const u8, value: []const u8, opts: WriteOptions) !void {
-        const cf =
-            self.cfs.get(cf_name) orelse return error.NoSuchColumnFamily;
-
-        var err: ?[*:0]u8 = null;
-        const c_opts = opts.toC();
-        defer c.rocksdb_writeoptions_destroy(c_opts);
-        c.rocksdb_put_cf(
-            self.c_handle,
-            c_opts,
-            cf.c_handle,
-            key.ptr,
-            key.len,
-            value.ptr,
-            value.len,
-            &err,
-        );
-        if (err) |e| {
-            std.log.err("Error reading database: {s}", .{e});
-            c.rocksdb_free(e);
-            return;
-        }
-
-        return;
-    }
-
-    pub fn get(self: DB, key: []const u8, opts: ReadOptions) !?[]const u8 {
-        var value_len: usize = 0;
-        var err: ?[*:0]u8 = null;
-        const c_opts = opts.toC();
-        defer c.rocksdb_readoptions_destroy(c_opts);
-        const value = c.rocksdb_get(
-            self.c_handle,
-            c_opts,
-            key.ptr,
-            key.len,
-            &value_len,
-            &err,
-        );
-        if (err) |e| {
-            std.log.err("Error reading from database: {s}", .{e});
-            c.rocksdb_free(err);
-            return error.UnexpectedError;
-        }
-
-        return if (value) |v|
-            v[0..value_len]
-        else
-            null;
-    }
-
-    pub fn getCf(self: DB, cf_name: []const u8, key: []const u8, opts: ReadOptions) !?[]const u8 {
-        const cf = self.cfs.get(cf_name) orelse return error.NoSuchColumnFamily;
-
-        var value_len: usize = 0;
-        var err: ?[*:0]u8 = null;
-        const c_opts = opts.toC();
-        defer c.rocksdb_readoptions_destroy(c_opts);
-        const value = c.rocksdb_get_cf(
-            self.c_handle,
-            c_opts,
-            cf.c_handle,
-            key.ptr,
-            key.len,
-            &value_len,
-            &err,
-        );
-        if (err) |e| {
-            std.log.err("Error reading from database: {s}", .{e});
-            c.rocksdb_free(err);
-            return error.UnexpectedError;
-        }
-
-        return if (value) |v|
-            v[0..value_len]
-        else
-            null;
-    }
-
-    pub fn listColumnFamilyC(path: [:0]const u8, c_opts: *c.rocksdb_options_t) !?[][*c]u8 {
-        var err: ?[*:0]u8 = null;
-        var len: usize = 0;
-        const cf_list = c.rocksdb_list_column_families(c_opts, path.ptr, &len, &err);
-
-        if (err) |e| {
-            const err_msg = std.mem.span(e);
-            // When this error, means this is an empty database.
-            if (std.mem.containsAtLeast(u8, err_msg, 1, "No such file or directory")) {
-                return null;
-            }
-            std.log.err("Error list column families: {s}", .{e});
-            c.rocksdb_free(err);
-            return error.ListColumnFamilies;
-        }
-
-        return cf_list[0..len];
-    }
-
-    pub fn createColumnFamily(
-        self: *DB,
-        name: [:0]const u8,
-        opts: Options,
-    ) !ColumnFamily {
-        const c_opts = opts.toC();
-        defer c.rocksdb_options_destroy(c_opts);
-
-        var err: ?[*:0]u8 = null;
-        const c_cf = c.rocksdb_create_column_family(
-            self.c_handle,
-            c_opts,
-            name.ptr,
-            &err,
-        );
-        errdefer c.rocksdb_column_family_handle_destroy(c_cf);
-
-        if (err) |e| {
-            std.log.err("Error creating column family: {s}", .{e});
-            c.rocksdb_free(err);
-            return error.CreateColumnFamily;
-        }
-
-        const cf = ColumnFamily{ .c_handle = c_cf.? };
-        try self.cfs.put(try self.allocator.dupe(u8, name), cf);
-        return cf;
-    }
+pub const ThreadMode = enum {
+    Single,
+    Multiple,
 };
+
+/// A RocksDB database, wrapper around `c.rocksdb_t`.
+///
+/// `ThreadMode` controls how column families are managed.
+pub fn Database(comptime tm: ThreadMode) type {
+    return struct {
+        c_handle: *c.rocksdb_t,
+        allocator: Allocator,
+        cfs: std.StringArrayHashMap(ColumnFamily),
+        cfs_lock: switch (tm) {
+            .Multiple => std.Thread.Mutex,
+            .Single => void,
+        },
+
+        const Self = @This();
+        pub fn open(allocator: Allocator, path: [:0]const u8, opts: Options) !Self {
+            const c_opts = opts.toC();
+            defer c.rocksdb_options_destroy(c_opts);
+
+            return Self.openC(allocator, path, c_opts);
+        }
+
+        pub fn openColumnFamilies(allocator: Allocator, path: [:0]const u8, db_opts: Options, cf_opts: Options) !Self {
+            const c_db_opts = db_opts.toC();
+            defer c.rocksdb_options_destroy(c_db_opts);
+            const cf_names = try Self.listColumnFamilyC(path, c_db_opts) orelse return Self.openC(allocator, path, c_db_opts);
+            defer c.rocksdb_list_column_families_destroy(cf_names.ptr, cf_names.len);
+
+            const c_cf_opt = cf_opts.toC();
+            defer c.rocksdb_options_destroy(c_cf_opt);
+            var c_cf_opts = std.ArrayList(*c.rocksdb_options_t).init(allocator);
+            defer c_cf_opts.deinit();
+            for (0..cf_names.len) |_| {
+                try c_cf_opts.append(c_cf_opt);
+            }
+
+            var cf_handles = std.ArrayList(?*c.rocksdb_column_family_handle_t).init(allocator);
+            for (0..cf_names.len) |_| {
+                try cf_handles.append(null);
+            }
+
+            var err: ?[*:0]u8 = null;
+            const c_handle = c.rocksdb_open_column_families(
+                c_db_opts,
+                path,
+                @intCast(cf_names.len),
+                cf_names.ptr,
+                c_cf_opts.items.ptr,
+                cf_handles.items.ptr,
+                &err,
+            );
+            if (err) |e| {
+                std.log.err("Error open column families: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.OpenDatabase;
+            }
+
+            var cfs = std.StringArrayHashMap(ColumnFamily).init(allocator);
+            for (cf_names, cf_handles.items) |name, handle| {
+                if (handle) |h| {
+                    const n = try allocator.dupe(u8, std.mem.span(name));
+                    try cfs.put(n, ColumnFamily.init(h));
+                } else {
+                    return error.ColumnFamilyNull;
+                }
+            }
+
+            return Self{
+                .allocator = allocator,
+                .c_handle = c_handle.?,
+                .cfs = cfs,
+                .cfs_lock = switch (tm) {
+                    .Single => {},
+                    .Multiple => std.Thread.Mutex{},
+                },
+            };
+        }
+
+        pub fn openC(allocator: Allocator, path: [:0]const u8, c_opts: *c.rocksdb_options_t) !Self {
+            var err: ?[*:0]u8 = null;
+            const c_db = c.rocksdb_open(
+                c_opts,
+                path.ptr,
+                &err,
+            );
+
+            if (err) |e| {
+                std.log.err("Error opening database: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.OpenDatabase;
+            }
+
+            return Self{
+                .c_handle = c_db.?,
+                .allocator = allocator,
+                .cfs = std.StringArrayHashMap(ColumnFamily).init(allocator),
+                .cfs_lock = switch (tm) {
+                    .Single => {},
+                    .Multiple => std.Thread.Mutex{},
+                },
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            var it = self.cfs.iterator();
+            while (it.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                entry.value_ptr.*.deinit();
+            }
+            self.cfs.deinit();
+
+            c.rocksdb_close(self.c_handle);
+        }
+
+        pub fn put(self: Self, key: []const u8, value: []const u8, opts: WriteOptions) !void {
+            var err: ?[*:0]u8 = null;
+            const c_opts = opts.toC();
+            defer c.rocksdb_writeoptions_destroy(c_opts);
+            c.rocksdb_put(
+                self.c_handle,
+                c_opts,
+                key.ptr,
+                key.len,
+                value.ptr,
+                value.len,
+                &err,
+            );
+            if (err) |e| {
+                std.log.err("Error reading database: {s}", .{e});
+                c.rocksdb_free(e);
+                return;
+            }
+
+            return;
+        }
+
+        pub fn putCf(self: Self, cf_name: []const u8, key: []const u8, value: []const u8, opts: WriteOptions) !void {
+            const cf =
+                self.cfs.get(cf_name) orelse return error.NoSuchColumnFamily;
+
+            var err: ?[*:0]u8 = null;
+            const c_opts = opts.toC();
+            defer c.rocksdb_writeoptions_destroy(c_opts);
+            c.rocksdb_put_cf(
+                self.c_handle,
+                c_opts,
+                cf.c_handle,
+                key.ptr,
+                key.len,
+                value.ptr,
+                value.len,
+                &err,
+            );
+            if (err) |e| {
+                std.log.err("Error reading database: {s}", .{e});
+                c.rocksdb_free(e);
+                return;
+            }
+
+            return;
+        }
+
+        pub fn get(self: Self, key: []const u8, opts: ReadOptions) !?[]const u8 {
+            var value_len: usize = 0;
+            var err: ?[*:0]u8 = null;
+            const c_opts = opts.toC();
+            defer c.rocksdb_readoptions_destroy(c_opts);
+            const value = c.rocksdb_get(
+                self.c_handle,
+                c_opts,
+                key.ptr,
+                key.len,
+                &value_len,
+                &err,
+            );
+            if (err) |e| {
+                std.log.err("Error reading from database: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.UnexpectedError;
+            }
+
+            return if (value) |v|
+                v[0..value_len]
+            else
+                null;
+        }
+
+        pub fn getCf(self: Self, cf_name: []const u8, key: []const u8, opts: ReadOptions) !?[]const u8 {
+            const cf = self.cfs.get(cf_name) orelse return error.NoSuchColumnFamily;
+
+            var value_len: usize = 0;
+            var err: ?[*:0]u8 = null;
+            const c_opts = opts.toC();
+            defer c.rocksdb_readoptions_destroy(c_opts);
+            const value = c.rocksdb_get_cf(
+                self.c_handle,
+                c_opts,
+                cf.c_handle,
+                key.ptr,
+                key.len,
+                &value_len,
+                &err,
+            );
+            if (err) |e| {
+                std.log.err("Error reading from database: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.UnexpectedError;
+            }
+
+            return if (value) |v|
+                v[0..value_len]
+            else
+                null;
+        }
+
+        pub fn listColumnFamilyC(path: [:0]const u8, c_opts: *c.rocksdb_options_t) !?[][*c]u8 {
+            var err: ?[*:0]u8 = null;
+            var len: usize = 0;
+            const cf_list = c.rocksdb_list_column_families(c_opts, path.ptr, &len, &err);
+
+            if (err) |e| {
+                const err_msg = std.mem.span(e);
+                // When this error, means this is an empty database.
+                if (std.mem.containsAtLeast(u8, err_msg, 1, "No such file or directory")) {
+                    return null;
+                }
+                std.log.err("Error list column families: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.ListColumnFamilies;
+            }
+
+            return cf_list[0..len];
+        }
+
+        pub fn createColumnFamily(
+            self: *Self,
+            name: [:0]const u8,
+            opts: Options,
+        ) !ColumnFamily {
+            if (comptime @TypeOf(self.cfs_lock) != void)
+                self.cfs_lock.lock();
+
+            defer if (comptime @TypeOf(self.cfs_lock) != void)
+                self.cfs_lock.unlock();
+
+            if (self.cfs.contains(name)) {
+                return error.CFAlreadyExists;
+            }
+            const c_opts = opts.toC();
+            defer c.rocksdb_options_destroy(c_opts);
+
+            var err: ?[*:0]u8 = null;
+            const c_cf = c.rocksdb_create_column_family(
+                self.c_handle,
+                c_opts,
+                name.ptr,
+                &err,
+            );
+            errdefer c.rocksdb_column_family_handle_destroy(c_cf);
+
+            if (err) |e| {
+                std.log.err("Error creating column family: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.CreateColumnFamily;
+            }
+
+            const cf = ColumnFamily{ .c_handle = c_cf.? };
+            try self.cfs.put(try self.allocator.dupe(u8, name), cf);
+            return cf;
+        }
+    };
+}

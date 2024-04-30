@@ -4,12 +4,11 @@ const rocksdb = @import("rocksdb");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    var db = try rocksdb.DB.openColumnFamilies(
+    var db = try rocksdb.Database(.Multiple).openColumnFamilies(
         allocator,
         "/tmp/zig-rocksdb-cf",
-        .{
-            .create_if_missing = true,
-        },
+        .{ .create_if_missing = true },
+        .{},
     );
     defer db.deinit();
 

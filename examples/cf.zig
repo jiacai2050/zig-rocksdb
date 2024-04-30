@@ -25,4 +25,7 @@ pub fn main() !void {
     } else {
         std.debug.print("Not found\n", .{});
     }
+
+    _ = try db.createColumnFamily("test-cf", .{});
+    try db.dropColumnFamily("test-cf");
 }

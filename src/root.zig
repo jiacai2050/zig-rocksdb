@@ -28,7 +28,7 @@ pub fn Database(comptime tm: ThreadMode) type {
     return struct {
         c_handle: *c.rocksdb_t,
         allocator: Allocator,
-        cfs: std.StringArrayHashMap(ColumnFamily),
+        cfs: std.StringHashMap(ColumnFamily),
         cfs_lock: switch (tm) {
             .Multiple => std.Thread.Mutex,
             .Single => void,
@@ -39,13 +39,13 @@ pub fn Database(comptime tm: ThreadMode) type {
             const c_opts = opts.toC();
             defer c.rocksdb_options_destroy(c_opts);
 
-            return Self.openC(allocator, path, c_opts);
+            return Self.openRaw(allocator, path, c_opts);
         }
 
         pub fn openColumnFamilies(allocator: Allocator, path: [:0]const u8, db_opts: Options, cf_opts: Options) !Self {
             const c_db_opts = db_opts.toC();
             defer c.rocksdb_options_destroy(c_db_opts);
-            const cf_names = try Self.listColumnFamilyC(path, c_db_opts) orelse return Self.openC(allocator, path, c_db_opts);
+            const cf_names = try Self.listColumnFamilyRaw(path, c_db_opts) orelse return Self.openRaw(allocator, path, c_db_opts);
             defer c.rocksdb_list_column_families_destroy(cf_names.ptr, cf_names.len);
 
             const c_cf_opt = cf_opts.toC();
@@ -77,7 +77,7 @@ pub fn Database(comptime tm: ThreadMode) type {
                 return error.OpenDatabase;
             }
 
-            var cfs = std.StringArrayHashMap(ColumnFamily).init(allocator);
+            var cfs = std.StringHashMap(ColumnFamily).init(allocator);
             for (cf_names, cf_handles.items) |name, handle| {
                 if (handle) |h| {
                     const n = try allocator.dupe(u8, std.mem.span(name));
@@ -98,9 +98,9 @@ pub fn Database(comptime tm: ThreadMode) type {
             };
         }
 
-        pub fn openC(allocator: Allocator, path: [:0]const u8, c_opts: *c.rocksdb_options_t) !Self {
+        pub fn openRaw(allocator: Allocator, path: [:0]const u8, c_opts: *c.rocksdb_options_t) !Self {
             var err: ?[*:0]u8 = null;
-            const c_db = c.rocksdb_open(
+            const c_handle = c.rocksdb_open(
                 c_opts,
                 path.ptr,
                 &err,
@@ -113,9 +113,9 @@ pub fn Database(comptime tm: ThreadMode) type {
             }
 
             return Self{
-                .c_handle = c_db.?,
+                .c_handle = c_handle.?,
                 .allocator = allocator,
-                .cfs = std.StringArrayHashMap(ColumnFamily).init(allocator),
+                .cfs = std.StringHashMap(ColumnFamily).init(allocator),
                 .cfs_lock = switch (tm) {
                     .Single => {},
                     .Multiple => std.Thread.Mutex{},
@@ -235,14 +235,13 @@ pub fn Database(comptime tm: ThreadMode) type {
                 null;
         }
 
-        pub fn listColumnFamilyC(path: [:0]const u8, c_opts: *c.rocksdb_options_t) !?[][*c]u8 {
+        pub fn listColumnFamilyRaw(path: [:0]const u8, c_opts: *c.rocksdb_options_t) !?[][*c]u8 {
             var err: ?[*:0]u8 = null;
             var len: usize = 0;
             const cf_list = c.rocksdb_list_column_families(c_opts, path.ptr, &len, &err);
 
             if (err) |e| {
                 const err_msg = std.mem.span(e);
-                // When this error, means this is an empty database.
                 if (std.mem.containsAtLeast(u8, err_msg, 1, "No such file or directory")) {
                     return null;
                 }
@@ -289,6 +288,35 @@ pub fn Database(comptime tm: ThreadMode) type {
             const cf = ColumnFamily{ .c_handle = c_cf.? };
             try self.cfs.put(try self.allocator.dupe(u8, name), cf);
             return cf;
+        }
+
+        pub fn dropColumnFamily(
+            self: *Self,
+            name: [:0]const u8,
+        ) !void {
+            if (comptime @TypeOf(self.cfs_lock) != void)
+                self.cfs_lock.lock();
+
+            defer if (comptime @TypeOf(self.cfs_lock) != void)
+                self.cfs_lock.unlock();
+
+            const cf = self.cfs.get(name) orelse return error.CFNotExists;
+
+            var err: ?[*:0]u8 = null;
+            c.rocksdb_drop_column_family(
+                self.c_handle,
+                cf.c_handle,
+                &err,
+            );
+
+            if (err) |e| {
+                std.log.err("Error drop column family: {s}", .{e});
+                c.rocksdb_free(err);
+                return error.DropColumnFamily;
+            }
+
+            cf.deinit();
+            std.debug.assert(self.cfs.remove(name));
         }
     };
 }

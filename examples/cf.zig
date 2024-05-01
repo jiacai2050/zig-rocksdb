@@ -18,14 +18,19 @@ pub fn main() !void {
     }
 
     try db.putCf(cf_name, "key", "value", .{});
-    const value = try db.getCf(cf_name, "key", .{});
-    if (value) |v| {
-        defer rocksdb.free(v);
-        std.debug.print("key is {s}\n", .{v});
-    } else {
-        std.debug.print("Not found\n", .{});
+    inline for ([_][:0]const u8{ "key", "key2" }) |key| {
+        const value = try db.getCf(cf_name, key, .{});
+        if (value) |v| {
+            defer rocksdb.free(v);
+            std.debug.print("{s} is {s}\n", .{ key, v });
+        } else {
+            std.debug.print("{s} not found\n", .{key});
+        }
     }
 
-    _ = try db.createColumnFamily("test-cf", .{});
-    try db.dropColumnFamily("test-cf");
+    _ = db.createColumnFamily(cf_name, .{}) catch |e| {
+        std.log.err("err:{any}", .{e});
+        return;
+    };
+    try db.dropColumnFamily(cf_name);
 }

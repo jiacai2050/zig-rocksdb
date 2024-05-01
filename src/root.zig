@@ -135,71 +135,44 @@ pub fn Database(comptime tm: ThreadMode) type {
         }
 
         pub fn put(self: Self, key: []const u8, value: []const u8, opts: WriteOptions) !void {
-            var err: ?[*:0]u8 = null;
             const c_opts = opts.toC();
             defer c.rocksdb_writeoptions_destroy(c_opts);
-            c.rocksdb_put(
-                self.c_handle,
+
+            try self.ffi(c.rocksdb_put, .{
                 c_opts,
                 key.ptr,
                 key.len,
                 value.ptr,
                 value.len,
-                &err,
-            );
-            if (err) |e| {
-                std.log.err("Error reading database: {s}", .{e});
-                c.rocksdb_free(e);
-                return;
-            }
-
-            return;
+            });
         }
 
         pub fn putCf(self: Self, cf_name: []const u8, key: []const u8, value: []const u8, opts: WriteOptions) !void {
             const cf =
                 self.cfs.get(cf_name) orelse return error.NoSuchColumnFamily;
 
-            var err: ?[*:0]u8 = null;
             const c_opts = opts.toC();
             defer c.rocksdb_writeoptions_destroy(c_opts);
-            c.rocksdb_put_cf(
-                self.c_handle,
+            try self.ffi(c.rocksdb_put_cf, .{
                 c_opts,
                 cf.c_handle,
                 key.ptr,
                 key.len,
                 value.ptr,
                 value.len,
-                &err,
-            );
-            if (err) |e| {
-                std.log.err("Error reading database: {s}", .{e});
-                c.rocksdb_free(e);
-                return;
-            }
-
-            return;
+            });
         }
 
         pub fn get(self: Self, key: []const u8, opts: ReadOptions) !?[]const u8 {
             var value_len: usize = 0;
-            var err: ?[*:0]u8 = null;
             const c_opts = opts.toC();
             defer c.rocksdb_readoptions_destroy(c_opts);
-            const value = c.rocksdb_get(
-                self.c_handle,
+            const value = try self.ffi(c.rocksdb_get, .{
                 c_opts,
                 key.ptr,
                 key.len,
                 &value_len,
-                &err,
-            );
-            if (err) |e| {
-                std.log.err("Error reading from database: {s}", .{e});
-                c.rocksdb_free(err);
-                return error.UnexpectedError;
-            }
+            });
 
             return if (value) |v|
                 v[0..value_len]
@@ -211,23 +184,15 @@ pub fn Database(comptime tm: ThreadMode) type {
             const cf = self.cfs.get(cf_name) orelse return error.NoSuchColumnFamily;
 
             var value_len: usize = 0;
-            var err: ?[*:0]u8 = null;
             const c_opts = opts.toC();
             defer c.rocksdb_readoptions_destroy(c_opts);
-            const value = c.rocksdb_get_cf(
-                self.c_handle,
+            const value = try self.ffi(c.rocksdb_get_cf, .{
                 c_opts,
                 cf.c_handle,
                 key.ptr,
                 key.len,
                 &value_len,
-                &err,
-            );
-            if (err) |e| {
-                std.log.err("Error reading from database: {s}", .{e});
-                c.rocksdb_free(err);
-                return error.UnexpectedError;
-            }
+            });
 
             return if (value) |v|
                 v[0..value_len]
@@ -270,20 +235,11 @@ pub fn Database(comptime tm: ThreadMode) type {
             const c_opts = opts.toC();
             defer c.rocksdb_options_destroy(c_opts);
 
-            var err: ?[*:0]u8 = null;
-            const c_cf = c.rocksdb_create_column_family(
-                self.c_handle,
+            const c_cf = try self.ffi(c.rocksdb_create_column_family, .{
                 c_opts,
                 name.ptr,
-                &err,
-            );
+            });
             errdefer c.rocksdb_column_family_handle_destroy(c_cf);
-
-            if (err) |e| {
-                std.log.err("Error creating column family: {s}", .{e});
-                c.rocksdb_free(err);
-                return error.CreateColumnFamily;
-            }
 
             const cf = ColumnFamily{ .c_handle = c_cf.? };
             try self.cfs.put(try self.allocator.dupe(u8, name), cf);
@@ -302,21 +258,43 @@ pub fn Database(comptime tm: ThreadMode) type {
 
             const cf = self.cfs.get(name) orelse return error.CFNotExists;
 
-            var err: ?[*:0]u8 = null;
-            c.rocksdb_drop_column_family(
-                self.c_handle,
+            try self.ffi(c.rocksdb_drop_column_family, .{
                 cf.c_handle,
-                &err,
-            );
-
-            if (err) |e| {
-                std.log.err("Error drop column family: {s}", .{e});
-                c.rocksdb_free(err);
-                return error.DropColumnFamily;
-            }
+            });
 
             cf.deinit();
             std.debug.assert(self.cfs.remove(name));
         }
+
+        /// Call RocksDB c API, automatically fill follow params:
+        /// - The first, `?*c.rocksdb_t`
+        /// - The last, `[*c][*c]errptr`
+        fn ffi(self: Self, c_func: anytype, args: anytype) !FFIReturnType(@TypeOf(c_func)) {
+            var ffi_args: std.meta.ArgsTuple(@TypeOf(c_func)) = undefined;
+            ffi_args[0] = self.c_handle;
+            inline for (args, 1..) |arg, i| {
+                ffi_args[i] = arg;
+            }
+            var err: ?[*:0]u8 = null;
+            ffi_args[ffi_args.len - 1] = &err;
+            const v = @call(.auto, c_func, ffi_args);
+            if (err) |e| {
+                std.log.err("Error when call rocksdb, msg:{s}", .{e});
+                c.rocksdb_free(err);
+                return error.DBError;
+            }
+
+            return v;
+        }
     };
+}
+
+fn FFIReturnType(Func: type) type {
+    const info = @typeInfo(Func);
+    const fn_info = switch (info) {
+        .Fn => |fn_info| fn_info,
+        else => @compileError("expecting a function"),
+    };
+
+    return fn_info.return_type.?;
 }

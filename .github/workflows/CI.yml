@@ -5,34 +5,32 @@ on:
     - cron: '10 20 * * *'
   workflow_dispatch:
   pull_request:
-    paths:
-      - '**.zig'
-      - '**.yml'
+    paths-ignore:
+      - 'README.org'
   push:
     branches:
       - main
-    paths:
-      - '**.zig'
-      - '**.yml'
+    paths-ignore:
+      - 'README.org'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    timeout-minutes: 10
+    timeout-minutes: 15
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        # os: [ubuntu-latest, macos-latest]
-        zig-version: [0.12.0, master]
+        os: [ubuntu-latest, macos-latest]
+        zig-version: [0.13.0, master]
     steps:
       - uses: actions/checkout@v4
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: mlugg/setup-zig@v1
         with:
           version: ${{ matrix.zig-version }}
-      - name: Install deps
-        run: |
-          make install-deps
       - name: Run tests
         run: |
           make test
@@ -42,4 +40,5 @@ jobs:
       - name: Memory leak detect
         if: matrix.os == 'ubuntu-latest'
         run: |
+          sudo apt install -y librocksdb-dev valgrind
           make valgrind

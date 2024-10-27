@@ -6,8 +6,9 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const link_vendor = b.option(bool, "link_vendor", "Whether link to vendored rocksdb(default: true)") orelse true;
+    const strip_lib = b.option(bool, "strip_lib", "Whether strip librocksdb(default: false)") orelse false;
 
-    const module = b.createModule(.{
+    const module = b.addModule("rocksdb", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -17,7 +18,7 @@ pub fn build(b: *std.Build) !void {
 
     var librocksdb: ?*Step.Compile = null;
     if (link_vendor) {
-        if (try buildStaticRocksdb(b, target, optimize)) |v| {
+        if (try buildStaticRocksdb(b, target, optimize, strip_lib)) |v| {
             librocksdb = v;
             module.linkLibrary(v);
         } else {
@@ -44,6 +45,7 @@ fn buildStaticRocksdb(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    strip_lib: bool,
 ) !?*Step.Compile {
     const is_darwin = target.result.isDarwin();
     const is_linux = target.result.os.tag == .linux;
@@ -57,10 +59,11 @@ fn buildStaticRocksdb(
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .strip = if (strip_lib) true else false,
     });
     lib.root_module.sanitize_c = false;
     if (optimize != .Debug) {
-        lib.define("NDEBUG", Some("1"));
+        lib.defineCMacro("NDEBUG", "1");
     }
 
     lib.defineCMacro("ROCKSDB_PLATFORM_POSIX", null);

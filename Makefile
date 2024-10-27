@@ -10,7 +10,7 @@ run:
 test:
 	zig build test -freference-trace
 
-test:
+clean:
 	rm -rf .zig-cache zig-out
 
 valgrind:

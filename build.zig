@@ -1,10 +1,14 @@
 const std = @import("std");
+const Build = std.Build;
+const Step = Build.Step;
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const link_vendor = b.option(bool, "link_vendor", "Whether link to vendored rocksdb(default: true)") orelse true;
+    const strip_lib = b.option(bool, "strip_lib", "Whether strip librocksdb(default: false)") orelse false;
 
-    const module = b.createModule(.{
+    const module = b.addModule("rocksdb", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -12,7 +16,17 @@ pub fn build(b: *std.Build) void {
         .link_libcpp = true,
     });
 
-    module.linkSystemLibrary("rocksdb", .{});
+    var librocksdb: ?*Step.Compile = null;
+    if (link_vendor) {
+        if (try buildStaticRocksdb(b, target, optimize, strip_lib)) |v| {
+            librocksdb = v;
+            module.linkLibrary(v);
+        } else {
+            return;
+        }
+    } else {
+        module.linkSystemLibrary("rocksdb", .{});
+    }
 
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/root.zig"),
@@ -25,6 +39,78 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
     buildExample(b, "basic", run_step, target, optimize, module);
     buildExample(b, "cf", run_step, target, optimize, module);
+}
+
+fn buildStaticRocksdb(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    strip_lib: bool,
+) !?*Step.Compile {
+    const is_darwin = target.result.isDarwin();
+    const is_linux = target.result.os.tag == .linux;
+
+    const rocksdb_dep = b.lazyDependency("rocksdb", .{
+        .target = target,
+        .optimize = optimize,
+    }) orelse return null;
+    const lib = b.addStaticLibrary(.{
+        .name = "rocksdb",
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .strip = if (strip_lib) true else false,
+    });
+    lib.root_module.sanitize_c = false;
+    if (optimize != .Debug) {
+        lib.defineCMacro("NDEBUG", "1");
+    }
+
+    lib.defineCMacro("ROCKSDB_PLATFORM_POSIX", null);
+    lib.defineCMacro("ROCKSDB_LIB_IO_POSIX", null);
+    lib.defineCMacro("ROCKSDB_SUPPORT_THREAD_LOCAL", null);
+    if (is_darwin) {
+        lib.defineCMacro("OS_MACOSX", null);
+    } else if (is_linux) {
+        lib.defineCMacro("OS_LINUX", null);
+    }
+
+    lib.linkLibCpp();
+    lib.addIncludePath(rocksdb_dep.path("include"));
+    lib.addIncludePath(rocksdb_dep.path("."));
+    const cflags = &.{
+        "-std=c++17",
+        "-Wsign-compare",
+        "-Wshadow",
+        "-Wno-unused-parameter",
+        "-Wno-unused-variable",
+        "-Woverloaded-virtual",
+        "-Wnon-virtual-dtor",
+        "-Wno-missing-field-initializers",
+        "-Wno-strict-aliasing",
+        "-Wno-invalid-offsetof",
+    };
+    const src_file = b.path("sys/rocksdb_lib_sources.txt").getPath2(b, null);
+    var f = try std.fs.openFileAbsolute(src_file, .{});
+    const body = try f.readToEndAlloc(b.allocator, 1024_1000);
+    var it = std.mem.splitScalar(u8, body, '\n');
+    while (it.next()) |src| {
+        // We have a pre-generated a version of build_version.cc in the local directory
+        if (std.mem.eql(u8, "util/build_version.cc", src) or src.len == 0) {
+            continue;
+        }
+        lib.addCSourceFile(.{
+            .file = rocksdb_dep.path(src),
+            .flags = cflags,
+        });
+    }
+    lib.addCSourceFile(.{
+        .file = b.path("sys/build_version.cc"),
+        .flags = cflags,
+    });
+    b.installArtifact(lib);
+    lib.installHeadersDirectory(rocksdb_dep.path("include/rocksdb"), "rocksdb", .{});
+    return lib;
 }
 
 fn buildExample(

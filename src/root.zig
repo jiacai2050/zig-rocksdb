@@ -5,6 +5,7 @@ const WriteOptions = @import("options.zig").WriteOptions;
 const ColumnFamily = @import("ColumnFamily.zig");
 const mem = std.mem;
 const Allocator = mem.Allocator;
+const is_latest_zig = @import("builtin").zig_version.minor > 13;
 
 const testing = std.testing;
 pub const c = @cImport({
@@ -292,7 +293,7 @@ pub fn Database(comptime tm: ThreadMode) type {
 fn FFIReturnType(Func: type) type {
     const info = @typeInfo(Func);
     const fn_info = switch (info) {
-        .Fn => |fn_info| fn_info,
+        if (is_latest_zig) .@"fn" else .Fn => |fn_info| fn_info,
         else => @compileError("expecting a function"),
     };
 

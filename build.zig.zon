@@ -1,12 +1,18 @@
 .{
     .name = "zig-rocksdb",
-    .version = "0.0.0",
+    .version = "0.1.0",
     .minimum_zig_version = "0.12.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .rocksdb = .{
+            .url = "https://github.com/facebook/rocksdb/archive/refs/tags/v9.0.0.zip",
+            .hash = "1220bd8f94fd5fcab321fa2b433f0f69b33d6af3fc5cc548ddda793633d629ae3647",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "sys", // librocksdb
         "LICENSE",
         "README.org",
     },

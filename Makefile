@@ -10,6 +10,9 @@ run:
 test:
 	zig build test -freference-trace
 
+test:
+	rm -rf .zig-cache zig-out
+
 valgrind:
 	zig build
 	./scripts/valgrind.sh

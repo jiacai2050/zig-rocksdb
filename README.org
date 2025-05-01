@@ -1,9 +1,9 @@
 #+TITLE: Zig-rocksdb
 #+DATE: 2024-04-27T11:27:04+0800
-#+LASTMOD: 2024-10-27T14:34:21+0800
+#+LASTMOD: 2025-05-01T12:52:44+0800
 #+AUTHOR: Jiacai Liu
 
-[[https://img.shields.io/badge/zig%20version-0.13.0-blue.svg]]
+[[https://img.shields.io/badge/zig%20version-0.14.0-blue.svg]]
 [[https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml][https://github.com/jiacai2050/zig-rocksdb/actions/workflows/CI.yml/badge.svg]]
 
 [[https://github.com/facebook/rocksdb/][RocksDB]] binding for Zig.

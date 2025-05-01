@@ -47,7 +47,7 @@ fn buildStaticRocksdb(
     optimize: std.builtin.OptimizeMode,
     strip_lib: bool,
 ) !?*Step.Compile {
-    const is_darwin = target.result.isDarwin();
+    const is_darwin = target.result.os.tag == .macos;
     const is_linux = target.result.os.tag == .linux;
 
     const rocksdb_dep = b.lazyDependency("rocksdb", .{
@@ -63,16 +63,16 @@ fn buildStaticRocksdb(
     });
     lib.root_module.sanitize_c = false;
     if (optimize != .Debug) {
-        lib.defineCMacro("NDEBUG", "1");
+        lib.root_module.addCMacro("NDEBUG", "1");
     }
 
-    lib.defineCMacro("ROCKSDB_PLATFORM_POSIX", null);
-    lib.defineCMacro("ROCKSDB_LIB_IO_POSIX", null);
-    lib.defineCMacro("ROCKSDB_SUPPORT_THREAD_LOCAL", null);
+    lib.root_module.addCMacro("ROCKSDB_PLATFORM_POSIX", "1");
+    lib.root_module.addCMacro("ROCKSDB_LIB_IO_POSIX", "1");
+    lib.root_module.addCMacro("ROCKSDB_SUPPORT_THREAD_LOCAL", "1");
     if (is_darwin) {
-        lib.defineCMacro("OS_MACOSX", null);
+        lib.root_module.addCMacro("OS_MACOSX", "1");
     } else if (is_linux) {
-        lib.defineCMacro("OS_LINUX", null);
+        lib.root_module.addCMacro("OS_LINUX", "1");
     }
 
     lib.linkLibCpp();

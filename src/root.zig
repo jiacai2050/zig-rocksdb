@@ -24,7 +24,8 @@ pub const ThreadMode = enum {
 
 /// A RocksDB database, wrapper around `c.rocksdb_t`.
 ///
-/// `ThreadMode` controls how column families are managed.
+/// `ThreadMode` controls how column families are managed, and it will be guarded
+///  with a Mutex for `Multiple` mode.
 pub fn Database(comptime tm: ThreadMode) type {
     return struct {
         c_handle: *c.rocksdb_t,
@@ -202,7 +203,7 @@ pub fn Database(comptime tm: ThreadMode) type {
         }
 
         pub fn listColumnFamilyRaw(path: [:0]const u8, c_opts: *c.rocksdb_options_t) !?[][*c]u8 {
-            var err: ?[*:0]u8 = null;
+            var err: [*c]u8 = null;
             var len: usize = 0;
             const cf_list = c.rocksdb_list_column_families(c_opts, path.ptr, &len, &err);
 

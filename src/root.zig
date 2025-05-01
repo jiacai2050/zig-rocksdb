@@ -63,7 +63,7 @@ pub fn Database(comptime tm: ThreadMode) type {
                 try cf_handles.append(null);
             }
 
-            var err: ?[*:0]u8 = null;
+            var err: [*c]u8 = null;
             const c_handle = c.rocksdb_open_column_families(
                 c_db_opts,
                 path,
@@ -101,7 +101,7 @@ pub fn Database(comptime tm: ThreadMode) type {
         }
 
         pub fn openRaw(allocator: Allocator, path: [:0]const u8, c_opts: *c.rocksdb_options_t) !Self {
-            var err: ?[*:0]u8 = null;
+            var err: [*c]u8 = null;
             const c_handle = c.rocksdb_open(
                 c_opts,
                 path.ptr,
@@ -277,7 +277,7 @@ pub fn Database(comptime tm: ThreadMode) type {
             inline for (args, 1..) |arg, i| {
                 ffi_args[i] = arg;
             }
-            var err: ?[*:0]u8 = null;
+            var err: [*c]u8 = null;
             ffi_args[ffi_args.len - 1] = &err;
             const v = @call(.auto, c_func, ffi_args);
             if (err) |e| {

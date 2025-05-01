@@ -1,11 +1,12 @@
 .{
-    .name = "zig-rocksdb",
+    .name = .rocksdb,
     .version = "0.1.0",
-    .minimum_zig_version = "0.12.0",
+    .fingerprint = 0xd916a6b2e09b22ea,
+    .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .rocksdb = .{
             .url = "https://github.com/facebook/rocksdb/archive/refs/tags/v9.0.0.zip",
-            .hash = "1220bd8f94fd5fcab321fa2b433f0f69b33d6af3fc5cc548ddda793633d629ae3647",
+            .hash = "N-V-__8AAFP4XwK9j5T9X8qzIforQz8PabM9avP8XMVI3dp5",
         },
     },
     .paths = .{

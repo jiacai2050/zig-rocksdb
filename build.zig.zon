@@ -1,8 +1,8 @@
 .{
     .name = .rocksdb,
-    .version = "0.1.0",
+    .version = "0.2.0",
     .fingerprint = 0xd916a6b2e09b22ea,
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .rocksdb = .{
             .url = "https://github.com/facebook/rocksdb/archive/refs/tags/v9.0.0.zip",

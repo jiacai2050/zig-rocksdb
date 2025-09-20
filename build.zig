@@ -29,9 +29,11 @@ pub fn build(b: *std.Build) !void {
     }
 
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
@@ -54,14 +56,16 @@ fn buildStaticRocksdb(
         .target = target,
         .optimize = optimize,
     }) orelse return null;
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "rocksdb",
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-        .strip = if (strip_lib) true else false,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .strip = if (strip_lib) true else false,
+            .sanitize_c = .off,
+        }),
     });
-    lib.root_module.sanitize_c = false;
     if (optimize != .Debug) {
         lib.root_module.addCMacro("NDEBUG", "1");
     }
@@ -123,9 +127,11 @@ fn buildExample(
 ) void {
     const exe = b.addExecutable(.{
         .name = name,
-        .root_source_file = b.path(std.fmt.comptimePrint("examples/{s}.zig", .{name})),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(std.fmt.comptimePrint("examples/{s}.zig", .{name})),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.addImport("rocksdb", module);
     b.installArtifact(exe);

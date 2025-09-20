@@ -1,6 +1,4 @@
-pub const c = @cImport({
-    @cInclude("rocksdb/c.h");
-});
+pub const c = @import("options.zig").c;
 
 const Self = @This();
 

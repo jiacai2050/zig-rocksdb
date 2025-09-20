@@ -57,6 +57,7 @@ fn buildStaticRocksdb(
         .optimize = optimize,
     }) orelse return null;
     const lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "rocksdb",
         .root_module = b.createModule(.{
             .target = target,

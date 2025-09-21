@@ -41,6 +41,14 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_lib_unit_tests.step);
     buildExample(b, "basic", run_step, target, optimize, module);
     buildExample(b, "cf", run_step, target, optimize, module);
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = lib_unit_tests.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+    const docs_step = b.step("docs", "Generate documentation");
+    docs_step.dependOn(&install_docs.step);
 }
 
 fn buildStaticRocksdb(

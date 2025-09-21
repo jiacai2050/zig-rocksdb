@@ -1,6 +1,6 @@
-#+TITLE: Zig-rocksdb
+#+TITLE: RocksDB bindings for Zig
 #+DATE: 2024-04-27T11:27:04+0800
-#+LASTMOD: 2025-09-20T13:42:12+0800
+#+LASTMOD: 2025-09-21T19:58:16+0800
 #+AUTHOR: Jiacai Liu
 
 [[https://img.shields.io/badge/zig%20version-0.15.1-blue.svg]]
@@ -10,6 +10,12 @@
 
 * Usage
 See [[file:examples/basic.zig]], [[file:examples/cf.zig]] for details.
+
+* Documentation
+#+begin_quote
+https://jiacai2050.github.io/zig-rocksdb
+#+end_quote
+
 * Installation
 #+begin_src bash
 zig fetch --save=rocksdb https://github.com/jiacai2050/zig-rocksdb/archive/${COMMIT}.tar.gz

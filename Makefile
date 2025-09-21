@@ -13,6 +13,9 @@ test:
 clean:
 	rm -rf .zig-cache zig-out
 
+docs:
+	zig build docs
+
 valgrind:
 	zig build
 	./scripts/valgrind.sh
@@ -24,3 +27,5 @@ endif
 ifeq ($(uname_S), Linux)
 	sudo apt install -y librocksdb-dev valgrind
 endif
+
+.PHONY: run test clean docs valgrind install-deps
